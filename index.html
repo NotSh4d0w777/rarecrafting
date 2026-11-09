@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Rank crafts by XP efficiency, look up recipes, and calculate material costs with Rare Crafting.">
+  <meta name="theme-color" content="#100c10">
+  <title>Rare Crafting</title>
+  <script src="style_config.js"></script>
+  <script>
+    const theme = typeof STYLE_CONFIG !== "undefined" ? STYLE_CONFIG.colors : {};
+    const themeProperties = {
+      accent: "--crimson", accentBright: "--crimson-br", accentDim: "--crimson-dim",
+      highlight: "--rose", glow: "--glow", emblemGlow: "--emblem-glow"
+    };
+    for (const [key, property] of Object.entries(themeProperties)) {
+      if (theme?.[key]) document.documentElement.style.setProperty(property, theme[key]);
+    }
+  </script>
+  <style>
+:root {
+  color-scheme: dark;
+  --black: #100d11;
+  --bg: #171318;
+  --bg2: #1d171d;
+  --bg3: #271e26;
+  --line: #30262e;
+  --line2: #41313b;
+  --line3: #5b414b;
+  --bone: #fff4f6;
+  --ink: #f1e5ea;
+  --ash: #c6b5be;
+  --faint: #ad99a4;
+  --crimson: #b62238;
+  --crimson-br: #ff4b60;
+  --crimson-dim: #601d28;
+  --rose: #ff9aa6;
+  --glow: rgba(255, 75, 96, .23);
+  --emblem-glow: rgba(255, 48, 73, .3);
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --body: "Segoe UI", system-ui, sans-serif;
+  --display: "Arial Black", "Segoe UI", sans-serif;
+  --rail-width: 218px;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--black); color: var(--ink); font: 14px/1.5 var(--body); }
+button, input, select { font: inherit; }
+button, select, summary { cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, p { margin: 0; }
+::selection { background: var(--crimson-dim); color: var(--bone); }
+:focus-visible { outline: 2px solid var(--rose); outline-offset: 3px; }
+.symbols { position: absolute; width: 0; height: 0; overflow: hidden; }
+.icon { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+.skip { position: fixed; top: 12px; left: 12px; z-index: 20; transform: translateY(-150%); background: var(--bone); color: var(--black); padding: 9px 14px; border-radius: 6px; }
+.skip:focus { transform: none; }
+.micro { font: 700 .69rem/1.35 var(--mono); letter-spacing: .15em; text-transform: uppercase; color: var(--faint); }
+.eyebrow { color: var(--rose); }
+
+.rail {
+  display: flex; flex-direction: column; gap: 42px; position: fixed; inset: 0 auto 0 0;
+  width: var(--rail-width); padding: 27px 16px 21px; z-index: 5;
+  background: linear-gradient(158deg, #1c131a, var(--bg) 54%); border-right: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 11px; margin-left: 6px; color: var(--bone); font-size: .94rem; font-weight: 800; }
+.brand-icon { width: 39px; height: 39px; display: grid; place-items: center; border: 1px solid #873244; border-radius: 10px; background: #331821; color: var(--crimson-br); box-shadow: 0 4px 18px -8px var(--emblem-glow); }
+.brand-icon > * { width: 24px; height: 24px; object-fit: contain; }
+.rail-group > .micro { padding-left: 12px; margin-bottom: 12px; }
+.nav { display: grid; gap: 5px; }
+.nav a { position: relative; display: flex; align-items: center; gap: 11px; border: 1px solid transparent; border-radius: 8px; min-height: 44px; padding: 9px 11px; color: var(--ash); font-weight: 600; white-space: nowrap; }
+.nav a:hover { background: var(--bg3); color: var(--bone); }
+.nav a[aria-current] { border-color: #65303d; background: linear-gradient(95deg, #48212c, #281920); color: var(--bone); }
+.nav a[aria-current]::before { content: ""; position: absolute; inset: 9px auto 9px -1px; width: 3px; border-radius: 3px; background: var(--crimson-br); }
+.nav a[aria-current] .icon { color: var(--crimson-br); }
+.nav-count { margin-left: auto; color: var(--rose); background: #3a222b; min-width: 24px; padding: 2px 5px; text-align: center; border-radius: 5px; font: 700 .7rem var(--mono); }
+.rail-foot { display: flex; align-items: center; gap: 9px; margin-top: auto; padding: 15px 7px 0; border-top: 1px solid var(--line); color: var(--faint); font-size: .73rem; }
+.status-dot { flex: none; width: 6px; height: 6px; display: inline-block; border-radius: 50%; background: var(--crimson-br); box-shadow: 0 0 10px var(--emblem-glow); }
+
+.shell { max-width: 1700px; margin-left: var(--rail-width); padding: 0 clamp(20px, 3vw, 54px); }
+.topbar { min-height: 68px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.top-label span { color: var(--crimson-br); padding-inline: 3px; }
+.index-label { display: flex; align-items: center; gap: 6px; color: var(--ash); font: .72rem var(--mono); }
+.index-label .status-dot { margin-right: 3px; }
+.index-label #recipeCount { color: var(--bone); font-weight: 700; }
+.hero {
+  position: relative; min-height: 292px; display: flex; align-items: center; isolation: isolate;
+  overflow: hidden; border: 1px solid #623040; border-radius: 17px;
+  background: radial-gradient(ellipse at 79% 45%, #541c2c 0, #31141f 34%, transparent 64%),
+    linear-gradient(116deg, #21141d, #1e131c 68%, #25131b);
+}
+.hero::before {
+  content: ""; z-index: -1; position: absolute; inset: 0;
+  background: repeating-linear-gradient(130deg, transparent 0 30px, #ff526308 30px 31px);
+  mask-image: linear-gradient(90deg, transparent 15%, #000);
+}
+.hero::after { content: ""; position: absolute; top: 0; left: 5%; width: 26%; height: 1px; background: linear-gradient(90deg, transparent, var(--crimson-br), transparent); }
+.hero-content { position: relative; z-index: 1; padding: clamp(25px, 3.6vw, 54px); }
+.hero h1 {
+  margin: 12px 0 11px; color: var(--bone); font: 900 clamp(2.55rem, 5.1vw, 5.6rem)/.96 var(--display);
+  letter-spacing: -.07em; text-transform: uppercase;
+}
+.hero h1 .x { display: block; color: var(--crimson-br); }
+.hero-description { max-width: 38ch; color: var(--ash); font-size: .94rem; }
+.hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.hero-art { position: absolute; inset: 0 0 0 auto; width: 59%; display: grid; place-items: center; pointer-events: none; }
+.hero-art > svg { width: 100%; height: 100%; max-height: 330px; overflow: visible; }
+.hero-art.has-emblem .hero-badge { display: none; }
+.hero-art > img { position: absolute; width: min(86%, 410px); height: auto; transform: translate(1%, -4%); filter: drop-shadow(0 0 22px var(--emblem-glow)); }
+.hero-mark { color: var(--crimson-br); filter: drop-shadow(0 0 16px var(--emblem-glow)); }
+.hero-stamp { position: absolute; right: 19px; bottom: 15px; color: var(--rose); font: 700 .64rem var(--mono); letter-spacing: .18em; }
+.btn, .mini, .rowbtn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 37px;
+  padding: 7px 12px; border: 1px solid var(--line3); border-radius: 7px;
+  background: var(--bg3); color: var(--ink); font-weight: 650; white-space: nowrap;
+  transition: background-color .16s, border-color .16s;
+}
+.btn:hover, .mini:hover, .rowbtn:hover { border-color: var(--crimson-br); background: #37242e; }
+.btn.solid { background: var(--crimson); border-color: var(--crimson); color: #fff; }
+.btn.solid:hover { background: #982035; border-color: var(--crimson-br); }
+.hero-actions .btn { min-height: 43px; padding-inline: 14px; }
+.hero-secondary { background: #281921; }
+.mini, .rowbtn { font-size: .76rem; }
+
+.section { margin-top: 47px; }
+.section, #ranked { scroll-margin-top: 24px; }
+.section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+.section-head h2 { margin: 4px 0 2px; font-size: clamp(1.55rem, 3vw, 2.1rem); line-height: 1.18; letter-spacing: -.035em; color: var(--bone); }
+.desc { color: var(--faint); }
+.desc strong { color: var(--ink); }
+.card { min-width: 0; background: var(--bg); border: 1px solid var(--line2); border-radius: 12px; }
+.workspace {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 29%); gap: 14px 18px;
+  grid-template-areas: "heading setup" "rank setup"; grid-template-rows: auto 1fr; align-items: start; margin-top: 31px;
+}
+.workbench-head { grid-area: heading; margin: 0; }
+.rank-area { grid-area: rank; min-width: 0; }
+.profile { grid-area: setup; padding: 16px; }
+.pill { display: inline-flex; align-items: center; min-height: 27px; padding: 3px 8px; border: 1px solid #653442; border-radius: 20px; color: var(--rose); background: #2a1921; font: .67rem var(--mono); white-space: nowrap; }
+.profile-head { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; }
+.profile-head .icon { color: var(--crimson-br); }
+.profile-head h3 { color: var(--bone); font-size: .98rem; }
+.level-tile { padding: 11px 12px; border: 1px solid #61303e; border-radius: 8px; background: linear-gradient(120deg, #381e29, #231820); }
+.level-tile label { color: var(--rose); }
+.lvl-box { display: flex; align-items: center; gap: 11px; margin-top: 6px; }
+.lvl-box input, .plan-in { width: 72px; border: 1px solid var(--line3); border-radius: 7px; background: var(--black); color: var(--bone); padding: 4px 6px; text-align: center; font: 800 1.5rem var(--mono); }
+.lvl-meta { font: .68rem/1.6 var(--mono); color: var(--faint); }
+.lvl-meta b { color: var(--bone); }
+.controls { display: grid; gap: 12px; margin-block: 14px; }
+.ctrl > .micro { display: block; margin-bottom: 5px; letter-spacing: .11em; }
+.seg { display: flex; padding: 3px; background: var(--black); border: 1px solid var(--line2); border-radius: 8px; }
+.seg button { flex: 1; min-height: 30px; padding: 3px 4px; border: 0; border-radius: 5px; background: transparent; color: var(--ash); font-size: .76rem; font-weight: 650; }
+.seg button:hover { background: var(--bg3); color: var(--bone); }
+.seg button[aria-pressed="true"] { background: var(--crimson); color: #fff; }
+.hint { margin-top: 5px; color: var(--faint); font-size: .71rem; }
+.filters { border-top: 1px solid var(--line); }
+summary { list-style: none; }
+summary::-webkit-details-marker { display: none; }
+.panel + .panel { border-top: 1px solid var(--line); }
+.panel > summary { display: flex; align-items: center; gap: 6px; padding: 9px 1px; min-height: 43px; color: var(--ink); font-size: .77rem; font-weight: 650; }
+.panel > summary:hover { color: var(--rose); }
+.count, .cnt { margin-left: auto; color: var(--rose); font: 700 .67rem var(--mono); }
+.chev, .chev2 { width: 7px; height: 7px; flex: none; margin-inline: 5px; border-right: 1.5px solid var(--faint); border-bottom: 1.5px solid var(--faint); transform: rotate(-45deg); }
+details[open] > summary :is(.chev, .chev2) { transform: rotate(45deg); }
+.pbody { padding: 4px 0 12px; }
+.quickrow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.quickrow .mini { min-height: 31px; padding-inline: 8px; }
+.grp { margin: 11px 0 4px; font: 700 .66rem var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--faint); }
+.checks { display: grid; gap: 3px; max-height: 210px; overflow: auto; scrollbar-color: var(--line3) transparent; }
+.chk { display: flex; align-items: center; gap: 5px; color: var(--ash); font-size: .77rem; cursor: pointer; padding: 3px 0; }
+.chk:is(.on, :hover) { color: var(--bone); }
+.chk input { accent-color: var(--crimson); }
+.chk .lv { margin-left: auto; color: var(--faint); font: .65rem var(--mono); }
+
+.rank-tools { display: flex; gap: 8px; margin-bottom: 12px; }
+.rank-tools .searchline { flex: 1; }
+.sort-tools { display: flex; gap: 5px; }
+.searchline { position: relative; min-width: 0; }
+.searchline::before, .searchline::after { content: ""; position: absolute; pointer-events: none; }
+.searchline::before { width: 9px; height: 9px; left: 12px; top: calc(50% - 6px); border: 1.5px solid var(--faint); border-radius: 50%; }
+.searchline::after { width: 5px; height: 1.5px; left: 20px; top: calc(50% + 4px); transform: rotate(45deg); background: var(--faint); }
+.searchline input, select { min-height: 41px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg); color: var(--bone); font-size: .82rem; }
+.searchline input { width: 100%; padding: 7px 10px 7px 33px; }
+.searchline input::placeholder { color: var(--faint); }
+select { padding: 5px 6px; }
+.sort-dir { width: 36px; padding-inline: 0; font-size: 1rem; }
+.rank-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 258px), 1fr)); gap: 11px; }
+.rank-card { position: relative; min-width: 0; display: flex; flex-direction: column; padding: 14px; background: linear-gradient(150deg, var(--bg2), var(--bg) 75%); border: 1px solid var(--line2); border-radius: 12px; }
+.rank-card.top { border-color: #854052; background: linear-gradient(150deg, #33202a, var(--bg) 74%); }
+.rank-card.top::before { content: ""; position: absolute; top: -1px; left: 16px; width: 52px; height: 2px; border-radius: 2px; background: var(--crimson-br); }
+.rank-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.rank-card h3 { margin: 3px 0 0; font-size: 1.03rem; line-height: 1.22; color: var(--bone); overflow-wrap: anywhere; }
+.rank-card .cat { color: var(--faint); font: 700 .63rem var(--mono); text-transform: uppercase; letter-spacing: .09em; }
+.eff { text-align: right; white-space: nowrap; }
+.eff strong { display: block; color: var(--rose); font: 750 1.16rem var(--mono); }
+.eff span { color: var(--faint); font: .63rem var(--mono); }
+.bptag { display: inline-block; padding: 1px 4px; margin-inline-start: 5px; border: 1px solid var(--line3); border-radius: 4px; color: var(--rose); font: 700 .59rem var(--mono); vertical-align: middle; }
+.rank-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 13px 0 8px; padding: 8px 0; border-block: 1px solid var(--line); }
+.rank-metrics > div { min-width: 0; }
+.rank-metrics dt { color: var(--faint); font: .61rem var(--mono); text-transform: uppercase; }
+.rank-metrics dd { margin: 2px 0 0; color: var(--ink); font: 700 .75rem var(--mono); white-space: nowrap; }
+.mats-cell { margin-bottom: 13px; color: var(--ash); font-size: .74rem; overflow-wrap: anywhere; }
+.mats-cell b { color: var(--ink); font-weight: 600; }
+.rank-actions { display: flex; gap: 6px; margin-top: auto; }
+.rank-actions .rowbtn.q { flex: 1; color: var(--rose); background: #35202a; border-color: #5e3341; }
+.rank-actions .rowbtn.q:hover { color: #fff; background: var(--crimson); border-color: var(--crimson); }
+.rank-actions .rowbtn.h { min-width: 36px; }
+.hiddenbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--faint); font-size: .76rem; }
+.hiddenbar:not(:empty) { margin-top: 11px; }
+.hchip { padding: 4px 7px; border: 1px solid var(--line2); border-radius: 5px; background: var(--bg2); color: var(--ink); font-size: .74rem; }
+.hchip b { color: var(--rose); }
+.empty { display: grid; justify-items: start; gap: 4px; padding: 20px; color: var(--faint); font-size: .84rem; }
+.empty strong { color: var(--ink); }
+.rank-grid > .empty { grid-column: 1 / -1; }
+
+.archive { padding: 15px; }
+.archive > .searchline input { background: var(--black); min-height: 46px; }
+.recipe-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 10px; max-height: 565px; overflow: auto; scrollbar-color: var(--line3) transparent; }
+.recipe-results:has(.rcard) { margin-top: 12px; }
+.recipe-results > .empty { grid-column: 1 / -1; padding: 14px 2px 2px; }
+.rcard { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 13px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg2); }
+.rhead, .rmeta2 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 9px; }
+.rname { color: var(--bone); font-weight: 700; }
+.rcat, .rlbl { color: var(--faint); font: .64rem var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+.rmeta2 { font-size: .75rem; color: var(--ash); }
+.rmeta2 b { color: var(--rose); }
+.rrecipes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rblock { padding: 9px; border-radius: 7px; background: var(--black); }
+.rlbl { margin-bottom: 5px; }
+.rline { color: var(--ash); font-size: .75rem; overflow-wrap: anywhere; }
+.rline b { color: var(--ink); font-weight: 600; }
+.ract { margin-top: auto; }
+.ract .btn { font-size: .77rem; }
+
+.queue-grid { display: grid; grid-template-columns: 1.15fr 1fr; align-items: start; gap: 12px; }
+.costhead { padding: 11px 15px; border-bottom: 1px solid var(--line); }
+.ttl { color: var(--bone); font-weight: 700; }
+.qrow { display: flex; align-items: center; gap: 7px; padding: 11px 13px; border-bottom: 1px solid var(--line); }
+.qrow:last-child { border-bottom: 0; }
+.qn { flex: 1; min-width: 0; }
+.qnm { color: var(--bone); font-weight: 700; overflow-wrap: anywhere; }
+.qmeta { font-size: .73rem; color: var(--faint); }
+.stepper { display: flex; flex: none; border: 1px solid var(--line3); border-radius: 7px; background: var(--black); }
+.stepper button, .stepper input { min-height: 34px; text-align: center; border: 0; color: var(--ink); }
+.stepper button { width: 28px; border-radius: 6px; background: var(--bg3); }
+.stepper button:hover { background: var(--crimson); }
+.stepper input { width: 46px; background: none; font: .77rem var(--mono); appearance: textfield; }
+.stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { appearance: none; }
+.qdel { min-width: 30px; min-height: 34px; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--faint); }
+.qdel:hover { border-color: var(--line3); color: var(--rose); }
+.qadd { position: relative; padding: 12px; border-top: 1px solid var(--line); }
+.qadd input { background: var(--black); }
+.qsug { position: absolute; inset: 56px 12px auto; z-index: 3; max-height: 225px; overflow: auto; padding: 4px; border: 1px solid var(--line3); border-radius: 8px; background: var(--bg2); box-shadow: 0 15px 24px -8px #000; }
+.qsug button { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; padding: 9px; border: 0; border-radius: 5px; color: var(--ink); background: none; text-align: left; }
+.qsug button:hover { background: var(--crimson); }
+.qsug button:focus-visible { outline-offset: -2px; }
+.qsug .s { color: var(--ash); font: .66rem var(--mono); white-space: nowrap; }
+.tot { display: flex; flex-wrap: wrap; gap: 13px 22px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #241920; }
+.tot .k { color: var(--faint); font: .63rem var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+.tot .v { margin-top: 3px; color: var(--bone); font: 750 1.25rem var(--mono); }
+.tot .rose, .recrow .a { color: var(--rose); }
+.recrow { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 7px 15px; border-bottom: 1px solid var(--line); }
+.recrow:last-child { border-bottom: 0; }
+.recrow .a { font: 700 .8rem var(--mono); }
+.other { border-top: 1px solid var(--line); }
+.other > summary { display: flex; align-items: center; gap: 5px; padding: 9px 15px; color: var(--ash); }
+.otherbody .a { color: var(--ash); }
+.costfoot { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 15px; border-top: 1px solid var(--line); }
+.costfoot .btn { font-size: .77rem; }
+
+.planner-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 11px 15px; padding: 15px; }
+.planner-controls label { display: block; margin-bottom: 5px; letter-spacing: .08em; }
+.plan-in { width: 82px; }
+.plan-arrow { color: var(--rose); font: 1.3rem var(--mono); align-self: end; margin-bottom: 8px; }
+.plan-note { max-width: 37ch; color: var(--faint); font-size: .78rem; align-self: center; }
+.plan-warn { padding: 10px 15px; border-block: 1px solid #673541; background: #311e27; color: var(--rose); font-size: .83rem; }
+.stages { border-top: 1px solid var(--line); }
+.stage { display: grid; grid-template-columns: 85px 1fr auto; align-items: baseline; gap: 7px; padding: 8px 15px; }
+.stage + .stage { border-top: 1px solid var(--line); }
+.stage .sl { color: var(--rose); font: 700 .73rem var(--mono); }
+.stage .sn { color: var(--bone); }
+.stage .sc { color: var(--ash); font-size: .76rem; }
+.ladder { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 9px; }
+.rung { min-width: 0; padding: 12px 13px; background: linear-gradient(148deg, var(--bg2), var(--bg)); border: 1px solid var(--line2); border-radius: 10px; }
+.rung.gap { background: transparent; border-style: dashed; color: var(--faint); }
+.rung .lv { margin-bottom: 6px; color: var(--rose); font: .7rem var(--mono); }
+.rung .lv::before { content: "LV "; color: var(--faint); }
+.rung .rn { color: var(--bone); font-weight: 700; }
+.rung .rmeta { margin-top: 4px; color: var(--ash); font-size: .74rem; }
+.rung .rmeta .e { color: var(--rose); font: 700 .72rem var(--mono); }
+.rung .sep { margin-inline: 5px; color: var(--faint); }
+footer { margin: 40px 0 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--faint); font-size: .75rem; }
+
+@media (max-width: 1160px) {
+  :root { --rail-width: 185px; }
+  .hero-art { width: 57%; }
+}
+@media (max-width: 925px) {
+  :root { --rail-width: 0px; }
+  .rail { position: sticky; top: 0; width: 100%; display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 7px 15px; border-right: 0; border-bottom: 1px solid var(--line2); }
+  .brand { margin: 0; white-space: nowrap; }
+  .rail-group { min-width: 0; margin-left: auto; }
+  .rail-group > .micro, .rail-foot { display: none; }
+  .nav { display: flex; gap: 2px; padding: 3px; overflow-x: auto; scrollbar-width: thin; }
+  .nav a { min-height: 37px; padding: 5px 7px; gap: 5px; font-size: .75rem; }
+  .nav a .icon { width: 16px; height: 16px; }
+  .section, #ranked, #top { scroll-margin-top: 70px; }
+}
+@media (max-width: 680px) {
+  .shell { padding-inline: 13px; }
+  .rail { flex-direction: column; align-items: stretch; gap: 3px; padding: 6px 10px; }
+  .rail-group { margin: 0; }
+  .brand { font-size: .85rem; }
+  .brand-icon { width: 29px; height: 29px; border-radius: 7px; }
+  .brand-icon > * { width: 19px; height: 19px; }
+  .nav a { min-height: 34px; }
+  .nav a .icon { display: none; }
+  .section, #ranked, #top { scroll-margin-top: 95px; }
+  .topbar { min-height: 46px; }
+  .top-label, .index-label { font-size: .62rem; }
+  .hero { min-height: 272px; }
+  .hero-art { width: 70%; opacity: .35; transform: translateX(20%); mask-image: linear-gradient(90deg, transparent, #000 55%); }
+  .hero-content { padding: 23px 18px; }
+  .hero-description { max-width: 28ch; font-size: .82rem; }
+  .hero-stamp { display: none; }
+  .hero-actions { gap: 6px; margin-top: 17px; }
+  .hero-actions .btn { font-size: .77rem; min-height: 38px; padding-inline: 9px; }
+  .hero-actions .icon { width: 14px; }
+  .workspace { grid-template-columns: 1fr; grid-template-areas: "heading" "setup" "rank"; grid-template-rows: auto; }
+  .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .controls > .ctrl:first-child { grid-column: 1 / -1; }
+  .queue-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 365px) {
+  .nav a { padding-inline: 6px; }
+  .nav-count { min-width: 16px; padding-inline: 3px; }
+  .rank-tools { flex-wrap: wrap; }
+  .rank-tools .searchline { flex-basis: 100%; }
+  .stage { grid-template-columns: 66px 1fr; }
+  .stage .sc { grid-column: 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition: none !important; }
+}
+  </style>
+</head>
+<body>
+  <a class="skip" href="#workbench">Skip to workbench</a>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="r-mark" viewBox="0 0 100 100">
+      <path fill="currentColor" d="M15 11h57l16 17-8 30H62l19 31H57L38 57h-5l-8 32H5l14-56h20l-2 8h26l3-12H11z"/>
+      <path fill="currentColor" opacity=".55" d="m84 11 11 12 3-12zM34 89h17l-12-20z"/>
+    </symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 5h13v15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12M4 17h14M8 8h6m-6 4h4"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9M8 5.25l8 4.5"/></symbol>
+    <symbol id="i-plan" viewBox="0 0 24 24"><path d="M9 5H5v15h14V5h-4M9 4h6v4H9zm0 9h6m-6 3h4"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><path d="M5 19h5v-6h5V6h5m-5 0 2-2m3 2-2 2"/><circle cx="4" cy="19" r="1.5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-tune" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="m13 2-8 12h6l-1 8 9-12h-6z"/></symbol>
+  </svg>
+  <aside class="rail" aria-label="Workspace navigation">
+    <a class="brand" href="#top" aria-label="Rare Crafting home">
+      <span class="brand-icon">
+        <svg aria-hidden="true"><use href="#r-mark"></use></svg>
+      </span>
+      <span id="railBrand">Rare Crafting</span>
+    </a>
+    <div class="rail-group">
+      <p class="micro">Operations</p>
+      <nav class="nav" aria-label="Tools">
+        <a href="#workbench" aria-current="location"><svg class="icon" aria-hidden="true"><use href="#i-grid"></use></svg><span>Workbench</span></a>
+        <a href="#recipes"><svg class="icon" aria-hidden="true"><use href="#i-book"></use></svg><span>Recipes</span></a>
+        <a href="#queue"><svg class="icon" aria-hidden="true"><use href="#i-box"></use></svg><span>Queue</span><span class="nav-count" id="queueCount">0</span></a>
+        <a href="#planner"><svg class="icon" aria-hidden="true"><use href="#i-plan"></use></svg><span>Planner</span></a>
+        <a href="#route"><svg class="icon" aria-hidden="true"><use href="#i-route"></use></svg><span>XP route</span></a>
+      </nav>
+    </div>
+    <div class="rail-foot"><span class="status-dot"></span><span>Saved in this browser</span></div>
+  </aside>
+
+  <main class="shell" id="top">
+    <div class="topbar">
+      <span class="micro top-label">Crafting <span>/</span> Workbench</span>
+      <span class="index-label"><span class="status-dot"></span><span id="recipeCount"></span> recipes indexed</span>
+    </div>
+    <header class="hero">
+      <div class="hero-content">
+        <p class="micro eyebrow" id="tagline">Crafting workbench</p>
+        <h1 id="wordmark"><span class="x">Rare</span> Crafting</h1>
+        <p class="hero-description">Find the best XP per material, build your queue, and plan your next level.</p>
+        <div class="hero-actions">
+          <a class="btn solid" href="#ranked">View ranked crafts <svg class="icon" aria-hidden="true"><use href="#i-arrow"></use></svg></a>
+          <a class="btn hero-secondary" href="#recipes">Browse recipes</a>
+        </div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <svg viewBox="0 0 540 300" fill="none">
+          <defs>
+            <linearGradient id="badge-fill" x1="197" y1="45" x2="389" y2="273" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#40151f"/><stop offset=".52" stop-color="#211017"/><stop offset="1" stop-color="#100c12"/>
+            </linearGradient>
+            <linearGradient id="badge-edge" x1="162" y1="47" x2="383" y2="274" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#ff8291"/><stop offset=".52" stop-color="#bd334a"/><stop offset="1" stop-color="#471c27"/>
+            </linearGradient>
+            <linearGradient id="orbit" x1="64" y1="0" x2="471" y2="300" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#6f2636" stop-opacity=".25"/><stop offset=".52" stop-color="#fc5066" stop-opacity=".7"/><stop offset="1" stop-color="#6f2636" stop-opacity=".25"/>
+            </linearGradient>
+          </defs>
+          <path d="M27 151h488M281 0v300M124 13l307 275M124 287 431 12" stroke="#863042" opacity=".34"/>
+          <circle cx="281" cy="150" r="144" stroke="url(#orbit)" stroke-dasharray="2 6"/>
+          <circle cx="281" cy="150" r="128" stroke="url(#orbit)"/>
+          <path d="M21 151h88l23-23m321 23h48m-220 144v-31m0-232V6M128 52h22m265 205h24" stroke="#b43b50" opacity=".66"/>
+          <g class="hero-badge">
+            <path d="m281 34 96 55v123l-96 56-96-56V89z" stroke="#f6475f" stroke-opacity=".32" stroke-width="10"/>
+            <path d="m281 34 96 55v123l-96 56-96-56V89z" fill="url(#badge-fill)" stroke="url(#badge-edge)" stroke-width="2"/>
+            <path d="m281 47 84 48v111l-84 49-84-49V95z" stroke="#8b2b3e" stroke-opacity=".68"/>
+            <path d="m197 95 84 55 84-55m-84 55v105" stroke="#8b2b3e" stroke-opacity=".29"/>
+            <use href="#r-mark" x="222" y="91" width="122" height="122" class="hero-mark"/>
+          </g>
+          <path d="M418 147v8m-4-4h8M140 147v8m-4-4h8m139 128h-4" stroke="#ff8190" stroke-width="1.4"/>
+          <path d="m453 216 6-6 6 6-6 6zm-343-123 4-4 4 4-4 4z" fill="#de4057"/>
+          <path d="M422 60h37l10 10h31M60 230h42l11 11h28" stroke="#953044" opacity=".8"/>
+        </svg>
+        <img id="emblem" alt="" hidden>
+        <span class="hero-stamp">RC / 01</span>
+      </div>
+    </header>
+
+    <section class="workspace section" id="workbench" aria-labelledby="rank-title">
+      <div class="section-head workbench-head">
+        <div><p class="micro eyebrow">01 / Workbench</p><h2 id="rank-title">Ranked crafts</h2>
+          <p class="desc">Compare crafts at level <strong id="lvlEcho">1</strong> using your current filters.</p></div>
+        <span class="pill" id="matchCount"></span>
+      </div>
+      <aside class="card profile" aria-labelledby="profile-title">
+        <div class="profile-head"><svg class="icon" aria-hidden="true"><use href="#i-tune"></use></svg><h3 id="profile-title">Crafting setup</h3></div>
+        <div class="level-tile">
+          <label for="lvl" class="micro">Your level</label>
+          <div class="lvl-box"><input id="lvl" type="number" min="0" max="200" value="1" inputmode="numeric"><div id="lvlMeta" class="lvl-meta"></div></div>
+        </div>
+        <div class="controls">
+          <div class="ctrl">
+            <span class="micro">Cost basis</span>
+            <div class="seg" id="modeSeg" role="group" aria-label="Cost basis">
+              <button data-mode="raw" aria-pressed="true">Raw</button><button data-mode="direct" aria-pressed="false">As listed</button>
+            </div>
+            <p class="hint" id="modeHint"></p>
+          </div>
+          <div class="ctrl">
+            <span class="micro">Craft visibility</span>
+            <div class="seg" id="scopeSeg" role="group" aria-label="Craft visibility">
+              <button data-scope="craftable" aria-pressed="true">Pays XP now</button><button data-scope="all" aria-pressed="false">All unlocked</button>
+            </div>
+          </div>
+          <div class="ctrl">
+            <span class="micro">Knowledge Seeker</span>
+            <div class="seg" id="ksSeg" role="group" aria-label="Knowledge Seeker XP bonus">
+              <button data-ks="0" aria-pressed="false">Off</button><button data-ks="1" aria-pressed="false">+1</button><button data-ks="2" aria-pressed="false">+2</button><button data-ks="3" aria-pressed="true">+3</button>
+            </div>
+          </div>
+        </div>
+        <div class="filters">
+          <details class="panel" id="bpPanel">
+            <summary><span>Blueprints owned</span><span class="count" id="bpCount"></span><span class="chev" aria-hidden="true"></span></summary>
+            <div class="pbody">
+              <div class="searchline"><input id="bpSearch" type="search" aria-label="Search blueprints" placeholder="Find a blueprint" autocomplete="off"></div>
+              <div class="quickrow"><button class="mini" data-bp="all">Own all</button><button class="mini" data-bp="none">Own none</button></div>
+              <div id="bpChecks"></div>
+            </div>
+          </details>
+          <details class="panel" id="matPanel">
+            <summary><span>Materials available</span><span class="count" id="matCount"></span><span class="chev" aria-hidden="true"></span></summary>
+            <div class="pbody">
+              <div class="searchline"><input id="matSearch" type="search" aria-label="Search materials" placeholder="Find a material" autocomplete="off"></div>
+              <div class="quickrow"><button class="mini" data-mat="all">Allow all</button><button class="mini" data-mat="base8">Base 8 only</button></div>
+              <div id="matChecks"></div>
+            </div>
+          </details>
+        </div>
+      </aside>
+      <div class="rank-area" id="ranked">
+        <div class="rank-tools">
+          <div class="searchline"><input id="search" type="search" aria-label="Filter ranked crafts" placeholder="Filter ranked crafts" autocomplete="off"></div>
+          <div class="sort-tools">
+            <select id="rankSort" aria-label="Sort crafts by">
+              <option value="eff">XP per material</option><option value="name">Item name</option><option value="xp">Craft XP</option>
+              <option value="cost">Material count</option><option value="req">Unlock level</option><option value="stop">Stop-XP level</option>
+            </select>
+            <button class="mini sort-dir" id="sortDirection" type="button" aria-label="Sort ascending" title="Sort ascending">↓</button>
+          </div>
+        </div>
+        <div class="rank-grid" id="rankCards"></div>
+        <div class="hiddenbar" id="hiddenBar"></div>
+      </div>
+    </section>
+
+    <section class="section" id="recipes" aria-labelledby="recipes-title">
+      <div class="section-head"><div><p class="micro eyebrow">02 / Reference</p><h2 id="recipes-title">Recipe archive</h2>
+        <p class="desc">Look up any craft, including locked and hidden items.</p></div></div>
+      <div class="card archive">
+        <div class="searchline"><input id="recipeSearch" type="search" aria-label="Search all recipes" placeholder="Search by item name" autocomplete="off"></div>
+        <div id="recipeResults" class="recipe-results"></div>
+      </div>
+    </section>
+
+    <section class="section" id="queue" aria-labelledby="queue-title">
+      <div class="section-head"><div><p class="micro eyebrow">03 / Production</p><h2 id="queue-title">Crafting queue</h2>
+        <p class="desc">Set quantities and get a combined materials list.</p></div></div>
+      <div class="queue-grid">
+        <div class="card">
+          <div class="costhead"><span class="ttl">Queued crafts</span></div>
+          <div class="qlist" id="qList"></div>
+          <div class="qadd">
+            <div class="searchline"><input id="qAdd" type="search" aria-label="Find a craft to queue" placeholder="Find a craft to queue" autocomplete="off"></div>
+            <div class="qsug" id="qSug" style="display:none"></div>
+          </div>
+        </div>
+        <div class="card costcard" id="costCard"></div>
+      </div>
+    </section>
+
+    <section class="section" id="planner" aria-labelledby="planner-title">
+      <div class="section-head"><div><p class="micro eyebrow">04 / Projection</p><h2 id="planner-title">Level planner</h2>
+        <p class="desc">Estimate the recyclables you need for a level range.</p></div></div>
+      <div class="card">
+        <div class="planner-controls">
+          <div><label class="micro" for="planFrom">From level</label><input class="plan-in" id="planFrom" type="number" min="0" max="200" value="8"></div>
+          <span class="plan-arrow" aria-hidden="true">→</span>
+          <div><label class="micro" for="planTo">To level</label><input class="plan-in" id="planTo" type="number" min="0" max="200" value="60"></div>
+          <p class="plan-note">Estimates use your crafting setup and the most efficient eligible craft at each stage.</p>
+        </div>
+        <div id="planBody"></div>
+      </div>
+    </section>
+
+    <section class="section" id="route" aria-labelledby="route-title">
+      <div class="section-head"><div><p class="micro eyebrow">05 / Progression</p><h2 id="route-title">Optimal XP route</h2>
+        <p class="desc">See which craft gives the most XP per material across each level range.</p></div></div>
+      <div class="ladder" id="ladder"></div>
+    </section>
+    <footer id="foot"></footer>
+  </main>
+
+  <script src="config.js"></script>
+  <script>
+const LVL_XP=100;
+const BASE8=["aluminium","rubber","steel","plastic","wire","electronics","scrap","glass"];
+const BASE8SET=new Set(BASE8);
+const CATLABEL={attachments:"Attachment",weapons:"Weapon",tools:"Tool",materials:"Material",skins:"Skin"};
+const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,"");
+const pretty=k=>k.replace(/([a-z])([A-Z])/g,"$1 $2").replace(/^./,c=>c.toUpperCase());
+
+const ITEMS=CONFIG_ITEMS.map(it=>({name:it.name,cat:(it.category||"").toLowerCase(),
+  req:+it.levelRequired||0,xp:+it.xp||0,stop:+it.stopLevel||0,bp:!!it.blueprintRequired,
+  yields:+it.yields||1,mats:it.materials||{}}));
+const MADE={};ITEMS.forEach(it=>MADE[norm(it.name)]=it);
+const producer=k=>MADE[norm(k)]||null;
+const rawCache={};
+function rawExpand(it,seen){seen=seen||new Set();if(rawCache[it.name])return rawCache[it.name];
+  if(seen.has(it.name))return{};seen.add(it.name);const out={};
+  for(const[k,q]of Object.entries(it.mats)){const p=producer(k);
+    if(p&&p!==it){const sub=rawExpand(p,seen),per=p.yields||1;
+      for(const[rk,rq]of Object.entries(sub))out[rk]=(out[rk]||0)+rq*q/per;}
+    else out[k]=(out[k]||0)+q;}
+  seen.delete(it.name);rawCache[it.name]=out;return out;}
+ITEMS.forEach(it=>{it.directTotal=Object.values(it.mats).reduce((a,b)=>a+b,0);
+  it.raw=rawExpand(it);it.rawTotal=Object.values(it.raw).reduce((a,b)=>a+b,0);it.rawLeaves=Object.keys(it.raw);});
+const ALL_LEAVES=[...new Set(ITEMS.flatMap(i=>i.rawLeaves))].sort();
+const byName=n=>ITEMS.find(i=>i.name===n);
+
+/* persistence (v2 namespace so new defaults apply cleanly) */
+const store={get(k,d){try{const v=localStorage.getItem("cr2_"+k);return v==null?d:JSON.parse(v);}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem("cr2_"+k,JSON.stringify(v));}catch(e){}}};
+
+/* state — NEW DEFAULTS: level 1, no blueprints, base-8 materials only */
+const state={
+  level:store.get("level",1),mode:store.get("mode","raw"),scope:"craftable",search:"",
+  sort:{key:"eff",dir:-1},
+  ks:store.get("ks",3),
+  planFrom:store.get("planFrom",8),planTo:store.get("planTo",60),
+  ownedBP:new Set(store.get("bp",[])),
+  allowMat:new Set(store.get("mat",BASE8.filter(m=>ALL_LEAVES.includes(m)))),
+  queue:store.get("queue",[]),
+  hidden:new Set(store.get("hidden",[])),
+  bpQ:"",matQ:"",recipeQ:""
+};
+function persist(){store.set("level",state.level);store.set("mode",state.mode);store.set("ks",state.ks);
+  store.set("planFrom",state.planFrom);store.set("planTo",state.planTo);
+  store.set("bp",[...state.ownedBP]);store.set("mat",[...state.allowMat]);
+  store.set("queue",state.queue);store.set("hidden",[...state.hidden]);}
+
+const $=s=>document.querySelector(s);
+
+
+const BRAND = {
+  gangName: "Rare Crafting",
+  gangNameHighlightChars: 4,
+  tagline: "Crafting workbench",
+  ...((typeof STYLE_CONFIG !== "undefined") ? STYLE_CONFIG : {})
+};
+
+function applyBranding() {
+  const name = BRAND.gangName;
+  const count = Math.max(0, Math.min(name.length, +BRAND.gangNameHighlightChars || 0));
+  const accent = document.createElement("span");
+  accent.className = "x";
+  accent.textContent = name.slice(0, count);
+  $("#wordmark").replaceChildren(accent, name.slice(count));
+  $("#railBrand").textContent = name;
+  $(".brand").setAttribute("aria-label", name + " home");
+  $("#tagline").textContent = BRAND.taglineAccent ? BRAND.tagline + " / " + BRAND.taglineAccent : BRAND.tagline;
+  document.title = BRAND.pageTitleSuffix ? name + " · " + BRAND.pageTitleSuffix : name;
+
+  if (BRAND.emblemSrc) {
+    const emblem = $("#emblem");
+    emblem.alt = BRAND.emblemAlt || "";
+    emblem.addEventListener("load", () => {
+      $(".hero-art").classList.add("has-emblem");
+      emblem.hidden = false;
+    }, { once: true });
+    emblem.src = BRAND.emblemSrc;
+  }
+}
+
+applyBranding();
+$("#recipeCount").textContent = ITEMS.length;
+
+const navLinks = [...document.querySelectorAll(".nav a")];
+function highlightNav() {
+  const target = navLinks.find(link => link.hash === location.hash) || navLinks[0];
+  navLinks.forEach(link => {
+    if (link === target) link.setAttribute("aria-current", "location");
+    else link.removeAttribute("aria-current");
+  });
+}
+window.addEventListener("hashchange", highlightNav);
+highlightNav();
+
+const effXP=it=>it.xp+state.ks;                       // Knowledge Seeker bonus per craft
+const recCost=it=>BASE8.reduce((s,m)=>s+(it.raw[m]||0),0);  // base-8 recyclable subtotal
+const cost=it=>state.mode==="raw"?it.rawTotal:it.directTotal;
+const eff=it=>{const c=cost(it);return c>0?effXP(it)/c:0;};
+const paysXP=(it,L)=>L*LVL_XP<it.stop;
+const bpOK=it=>!it.bp||state.ownedBP.has(it.name);
+const matOK=it=>it.rawLeaves.every(m=>state.allowMat.has(m));
+function usable(it,L,pay){return it.req<=L&&bpOK(it)&&matOK(it)&&cost(it)>0&&it.xp>0
+  &&!state.hidden.has(it.name)&&(!pay||paysXP(it,L));}
+function recipeHTML(it){const src=state.mode==="raw"?it.raw:it.mats;
+  return Object.entries(src).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${Math.round(v)}&nbsp;<b>${pretty(k)}</b>`).join(", ");}
+function bestAt(L){const pool=ITEMS.filter(it=>usable(it,L,true));return pool.length?pool.reduce((a,b)=>eff(b)>eff(a)?b:a):null;}
+
+function renderRankings(){
+  const L=state.level,pay=state.scope==="craftable";
+  let rows=ITEMS.filter(it=>usable(it,L,pay));
+  if(state.search){const q=state.search.toLowerCase();rows=rows.filter(it=>it.name.toLowerCase().includes(q));}
+  const k=state.sort.key,dir=state.sort.dir;
+  const val={eff:eff,name:it=>it.name.toLowerCase(),xp:it=>it.xp,cost:cost,req:it=>it.req,stop:it=>it.stop}[k];
+  rows.sort((a,b)=>{const va=val(a),vb=val(b);if(va<vb)return -dir;if(va>vb)return dir;return eff(b)-eff(a);});
+
+  $("#matchCount").textContent = `${rows.length} ${rows.length === 1 ? "match" : "matches"}`;
+  const direction = $("#sortDirection");
+  const nextDirection = dir === -1 ? "Sort ascending" : "Sort descending";
+  direction.textContent = dir === -1 ? "↓" : "↑";
+  direction.title = nextDirection;
+  direction.setAttribute("aria-label", nextDirection);
+  $("#rankCards").innerHTML = rows.length ? rows.map((it, index) => `
+    <article class="rank-card ${index === 0 && k === "eff" && dir === -1 ? "top" : ""}">
+      <header>
+        <div>
+          <span class="cat">${String(index + 1).padStart(2, "0")} / ${CATLABEL[it.cat] || it.cat}</span>
+          <h3>${it.name}${it.bp ? '<span class="bptag" title="Blueprint required">BP</span>' : ""}</h3>
+        </div>
+        <div class="eff"><strong>${eff(it).toFixed(4)}</strong><span>XP / MAT</span></div>
+      </header>
+      <dl class="rank-metrics">
+        <div><dt>XP</dt><dd title="${it.xp} base XP + ${state.ks} bonus XP">${effXP(it)}</dd></div>
+        <div><dt>Mats</dt><dd>${Math.round(cost(it)).toLocaleString()}</dd></div>
+        <div><dt>Unlock</dt><dd>Lv ${it.req}</dd></div>
+        <div><dt>Stops</dt><dd>${it.stop >= 20000 ? "—" : "Lv " + (it.stop / LVL_XP)}</dd></div>
+      </dl>
+      <p class="mats-cell">${recipeHTML(it)}</p>
+      <div class="rank-actions">
+        <button class="rowbtn q" data-add="${encodeURIComponent(it.name)}">+ Queue craft</button>
+        <button class="rowbtn h" data-hide="${encodeURIComponent(it.name)}" aria-label="Hide this craft" title="Hide this craft">×</button>
+      </div>
+    </article>`).join("") : `<div class="card empty"><strong>No crafts match.</strong><span>Try a different name or adjust your crafting setup.</span></div>`;
+  renderHiddenBar();
+}
+function renderHiddenBar(){
+  const bar=$("#hiddenBar");
+  if(!state.hidden.size){bar.innerHTML="";return;}
+  bar.innerHTML=`<span>Hidden (${state.hidden.size}):</span>`+
+    [...state.hidden].map(n=>`<button class="hchip" data-unhide="${encodeURIComponent(n)}">${n} <b>✕</b></button>`).join("")+
+    `<button class="hchip" data-unhide="__ALL__">clear all</button>`;
+}
+
+/* queue */
+function queueRaw(){const need={};let totXP=0,totOut=0;
+  for(const q of state.queue){const it=byName(q.name);if(!it)continue;const n=Math.max(0,q.qty|0);
+    for(const[k,v]of Object.entries(it.raw))need[k]=(need[k]||0)+v*n;
+    totXP+=effXP(it)*n;totOut+=(it.yields||1)*n;}
+  return{need,totXP,totOut};}
+function addToQueue(name){const ex=state.queue.find(q=>q.name===name);
+  if(ex)ex.qty++;else state.queue.push({name,qty:1});persist();renderQueue();}
+function renderQueue(){
+  const list=$("#qList");
+  $("#queueCount").textContent=state.queue.length;
+  if(!state.queue.length)list.innerHTML=`<div class="empty"><strong>No crafts queued.</strong><span>Add a ranked craft or search below.</span></div>`;
+  else list.innerHTML=state.queue.map((q,idx)=>{const it=byName(q.name);if(!it)return"";
+    return `<div class="qrow"><div class="qn"><div class="qnm">${it.name}${it.bp?'<span class="bptag">BP</span>':''}</div>
+      <div class="qmeta">${effXP(it)} xp · ${Math.round(it.rawTotal)} raw mats each${it.yields>1?` · yields ${it.yields}`:''}</div></div>
+      <div class="stepper"><button data-step="${idx}:-1" aria-label="Decrease quantity">−</button>
+        <input type="number" min="0" data-qty="${idx}" value="${q.qty}" aria-label="Craft quantity"><button data-step="${idx}:1" aria-label="Increase quantity">+</button></div>
+      <button class="qdel" data-qdel="${idx}" title="Remove craft" aria-label="Remove craft">×</button></div>`;}).join("");
+  renderCost();
+}
+function renderCost(){
+  const {need,totXP,totOut}=queueRaw();
+  const base=BASE8.filter(m=>need[m]>0).sort((a,b)=>need[b]-need[a]);
+  const other=Object.keys(need).filter(m=>!BASE8SET.has(m)&&need[m]>0).sort((a,b)=>need[b]-need[a]);
+  const totRec=base.reduce((s,m)=>s+need[m],0);
+  const c=$("#costCard");
+  if(!base.length&&!other.length){c.innerHTML=`<div class="costhead"><span class="ttl">Materials needed</span></div>
+    <div class="empty"><strong>No materials needed yet.</strong><span>Your combined totals will appear here.</span></div>`;return;}
+  const baseRows=base.map(m=>`<div class="recrow"><span class="m">${pretty(m)}</span><span class="a">${Math.round(need[m]).toLocaleString()}</span></div>`).join("")
+    ||`<div class="recrow"><span class="m" style="color:var(--faint)">No base recyclables needed</span></div>`;
+  const otherBlock=other.length?`<details class="other"><summary>Other materials <span class="cnt">${other.length}</span><span class="chev2"></span></summary>
+    <div class="otherbody">${other.map(m=>`<div class="recrow"><span class="m">${pretty(m)}</span><span class="a">${Math.round(need[m]).toLocaleString()}</span></div>`).join("")}</div></details>`:"";
+  c.innerHTML=`<div class="costhead"><span class="ttl">Materials needed</span></div>
+    <div class="tot">
+      <div><div class="k">Total recyclables</div><div class="v rose">${Math.round(totRec).toLocaleString()}</div></div>
+      <div><div class="k">Total XP</div><div class="v">${totXP.toLocaleString()}</div></div>
+      <div><div class="k">Items out</div><div class="v">${totOut.toLocaleString()}</div></div>
+    </div>
+    <div class="reclist">${baseRows}</div>
+    ${otherBlock}
+    <div class="costfoot">
+      <button class="btn solid" id="copyRec">Copy recyclables</button>
+      ${other.length?'<button class="btn" id="copyOther">Copy other</button>':''}
+      <button class="btn" id="qClear">Clear queue</button></div>`;
+  $("#copyRec").onclick=()=>copyList(need,BASE8.filter(m=>need[m]>0),"recyclables","copyRec");
+  if(other.length)$("#copyOther").onclick=()=>copyList(need,other,"other materials","copyOther");
+  $("#qClear").onclick=()=>{state.queue=[];persist();renderQueue();};
+}
+
+async function copyText(text, button) {
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    copied = true;
+  } catch {
+    const field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.append(field);
+    field.select();
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    } finally {
+      field.remove();
+      button.focus({ preventScroll: true });
+    }
+  }
+  const label = button.dataset.label || button.textContent;
+  button.dataset.label = label;
+  button.textContent = copied ? "Copied ✓" : "Copy unavailable";
+  clearTimeout(button.feedbackTimer);
+  button.feedbackTimer = setTimeout(() => button.textContent = label, 1200);
+}
+
+function copyList(need, keys, label, btnId) {
+  const text = `${BRAND.gangName} — ${label}:\n` + keys.map(k => `${Math.round(need[k])} ${pretty(k)}`).join("\n");
+  copyText(text, document.getElementById(btnId));
+}
+
+/* ladder */
+function renderLadder(){
+  const maxLevel=Math.min(200,Math.ceil(Math.max(...ITEMS.map(i=>i.stop))/LVL_XP));
+  const seq=[];for(let L=0;L<=maxLevel;L++){const b=bestAt(L);seq.push({L,name:b?b.name:null,it:b,e:b?eff(b):0});}
+  const segs=[];let cur=null;
+  for(const s of seq){if(cur&&cur.name===s.name)cur.to=s.L;else{cur={name:s.name,it:s.it,e:s.e,from:s.L,to:s.L};segs.push(cur);}}
+  $("#ladder").innerHTML=segs.map(sg=>{
+    if(!sg.name)return `<div class="rung gap"><div class="lv">${sg.from}${sg.to>sg.from?'–'+sg.to:''}</div><div class="rc">No XP-paying craft under current filters</div></div>`;
+    const it=sg.it;
+    return `<div class="rung"><div class="lv">${sg.from===sg.to?`<b>${sg.from}</b>`:`<b>${sg.from}</b>–${sg.to}`}</div>
+      <div class="rc"><div class="rn">${it.name}${it.bp?'<span class="bptag">BP</span>':''}</div>
+        <div class="rmeta"><span class="e">${sg.e.toFixed(4)}</span> xp/mat<span class="sep">·</span>${effXP(it)} xp / ${Math.round(cost(it))} mats<span class="sep">·</span>${CATLABEL[it.cat]||it.cat}</div>
+      </div></div>`;}).join("");
+}
+
+/* level-up planner: walk optimal path, segment by level + stop-XP boundaries */
+function planLevelUp(fromLv,toLv){
+  const fromXP=fromLv*LVL_XP, toXP=toLv*LVL_XP;
+  if(toXP<=fromXP)return null;
+  const bset=new Set([fromXP,toXP]);
+  for(let L=fromLv;L<=toLv;L++)bset.add(L*LVL_XP);
+  ITEMS.forEach(it=>{if(it.stop>fromXP&&it.stop<toXP)bset.add(it.stop);});
+  const bounds=[...bset].filter(x=>x>=fromXP&&x<=toXP).sort((a,b)=>a-b);
+  const need={};let totRec=0,totCrafts=0,coveredXP=0;const stages=[];const gaps=[];
+  const bestForSeg=a=>{const L=Math.floor(a/LVL_XP);
+    const pool=ITEMS.filter(it=>it.req<=L&&it.stop>a&&bpOK(it)&&matOK(it)&&!state.hidden.has(it.name)&&cost(it)>0&&effXP(it)>0);
+    return pool.length?pool.reduce((x,y)=>eff(y)>eff(x)?y:x):null;};
+  for(let i=0;i<bounds.length-1;i++){
+    const a=bounds[i],b=bounds[i+1],segXP=b-a;if(segXP<=0)continue;
+    const it=bestForSeg(a);
+    if(!it){gaps.push([Math.floor(a/LVL_XP),Math.floor(b/LVL_XP)]);continue;}
+    const crafts=segXP/effXP(it);
+    totCrafts+=crafts;totRec+=crafts*recCost(it);coveredXP+=segXP;
+    for(const[k,v]of Object.entries(it.raw))need[k]=(need[k]||0)+v*crafts;
+    const last=stages[stages.length-1];
+    if(last&&last.name===it.name){last.toXP=b;last.crafts+=crafts;}
+    else stages.push({name:it.name,it,fromXP:a,toXP:b,crafts});
+  }
+  return{need,totRec,totCrafts,coveredXP,stages,gaps,fromXP,toXP};}
+function renderPlanner(){
+  const from=state.planFrom,to=state.planTo;const r=planLevelUp(from,to);const el=$("#planBody");
+  if(!r){el.innerHTML=`<div class="plan-warn">Set “to” higher than “from”.</div>`;return;}
+  const base=BASE8.filter(m=>r.need[m]>0).sort((a,b)=>r.need[b]-r.need[a]);
+  const other=Object.keys(r.need).filter(m=>!BASE8SET.has(m)&&r.need[m]>0).sort((a,b)=>r.need[b]-r.need[a]);
+  const baseRows=base.map(m=>`<div class="recrow"><span class="m">${pretty(m)}</span><span class="a">${Math.round(r.need[m]).toLocaleString()}</span></div>`).join("")||`<div class="recrow"><span class="m" style="color:var(--faint)">none</span></div>`;
+  const otherBlock=other.length?`<details class="other"><summary>Other materials <span class="cnt">${other.length}</span><span class="chev2"></span></summary>
+    <div class="otherbody">${other.map(m=>`<div class="recrow"><span class="m">${pretty(m)}</span><span class="a">${Math.round(r.need[m]).toLocaleString()}</span></div>`).join("")}</div></details>`:"";
+  const gapWarn=r.gaps.length?`<div class="plan-warn">No craft covers level ${r.gaps.map(g=>g[0]+(g[1]>g[0]+1?'–'+(g[1]-1):'')).join(", ")} under your filters — those levels are excluded from the total. Enable more blueprints or materials to fill them.</div>`:"";
+  const stageRows=r.stages.map(s=>`<div class="stage"><span class="sl">Lv ${Math.floor(s.fromXP/100)}–${Math.floor(s.toXP/100)}</span>
+    <span class="sn">${s.name}${s.it.bp?' <span class="bptag">BP</span>':''}</span>
+    <span class="sc">×${Math.ceil(s.crafts).toLocaleString()} crafts · ${Math.round(s.crafts*recCost(s.it)).toLocaleString()} rec</span></div>`).join("");
+  el.innerHTML=`${gapWarn}
+    <div class="tot">
+      <div><div class="k">Total recyclables</div><div class="v rose">${Math.round(r.totRec).toLocaleString()}</div></div>
+      <div><div class="k">Total crafts</div><div class="v">${Math.ceil(r.totCrafts).toLocaleString()}</div></div>
+      <div><div class="k">XP span</div><div class="v">${r.coveredXP.toLocaleString()}</div></div>
+      <div><div class="k">Knowledge Seeker</div><div class="v">${state.ks?'+'+state.ks:'off'}</div></div>
+    </div>
+    <div class="reclist">${baseRows}</div>
+    ${otherBlock}
+    <div class="stages">${stageRows}</div>
+    <div class="costfoot"><button class="btn solid" id="copyPlan">Copy recyclables</button></div>`;
+
+  const button = $("#copyPlan");
+  button.onclick = () => {
+    const bonus = state.ks ? "+" + state.ks : "off";
+    const text = `${BRAND.gangName} — recyclables Lv${from}→${to} (KS ${bonus}):\n` +
+      base.map(k => `${Math.round(r.need[k])} ${pretty(k)}`).join("\n");
+    copyText(text, button);
+  };
+}
+
+/* filter panels */
+function buildBP(){
+  const q=state.bpQ.toLowerCase();
+  const bpItems=ITEMS.filter(i=>i.bp&&(!q||i.name.toLowerCase().includes(q)));
+  const byCat={};bpItems.forEach(i=>(byCat[i.cat]=byCat[i.cat]||[]).push(i));
+  const order=["weapons","attachments","tools","materials","skins"];
+  $("#bpChecks").innerHTML=order.filter(c=>byCat[c]).map(c=>`<div class="grp">${(CATLABEL[c]||c)}s</div>
+    <div class="checks">${byCat[c].sort((a,b)=>a.req-b.req).map(i=>`<label class="chk ${state.ownedBP.has(i.name)?'on':''}">
+      <input type="checkbox" data-bpname="${encodeURIComponent(i.name)}" ${state.ownedBP.has(i.name)?'checked':''}>
+      <span>${i.name}</span><span class="lv">L${i.req}</span></label>`).join("")}</div>`).join("")
+    ||`<div class="grp" style="color:var(--faint)">No blueprints match.</div>`;
+  $("#bpCount").textContent=`${state.ownedBP.size}/${ITEMS.filter(i=>i.bp).length}`;
+}
+function buildMat(){
+  const q=state.matQ.toLowerCase();
+  const list=ALL_LEAVES.filter(m=>!q||pretty(m).toLowerCase().includes(q));
+  $("#matChecks").innerHTML=`<div class="checks">${list.map(m=>`<label class="chk ${state.allowMat.has(m)?'on':''}">
+    <input type="checkbox" data-matname="${m}" ${state.allowMat.has(m)?'checked':''}><span>${pretty(m)}${BASE8SET.has(m)?'':''}</span></label>`).join("")
+    ||`<span class="grp" style="color:var(--faint)">No materials match.</span>`}</div>`;
+  $("#matCount").textContent=`${state.allowMat.size}/${ALL_LEAVES.length}`;
+}
+
+/* recipe lookup — searches every item regardless of level, blueprint, material, or hidden filters */
+function formatMats(obj){
+  const entries=Object.entries(obj).sort((a,b)=>b[1]-a[1]);
+  if(!entries.length)return `<div class="rline" style="color:var(--faint)">No materials.</div>`;
+  return entries.map(([k,v])=>`<div class="rline">${Math.round(v).toLocaleString()}&nbsp;<b>${pretty(k)}</b></div>`).join("");
+}
+function renderRecipeSearch(){
+  const box=$("#recipeResults");
+  const q=state.recipeQ.trim().toLowerCase();
+  if(!q){box.innerHTML=`<div class="empty"><strong>Search all ${ITEMS.length} recipes.</strong><span>See the listed ingredients and their raw materials.</span></div>`;return;}
+  const rows=ITEMS.filter(it=>it.name.toLowerCase().includes(q)).sort((a,b)=>a.req-b.req||a.name.localeCompare(b.name)).slice(0,40);
+  if(!rows.length){box.innerHTML=`<div class="empty"><strong>No matching recipes.</strong><span>Try a different item name.</span></div>`;return;}
+  box.innerHTML=rows.map(it=>`
+    <div class="rcard">
+      <div class="rhead">
+        <span class="rname">${it.name}</span>
+        <span class="rcat">${CATLABEL[it.cat]||it.cat}</span>
+        ${it.bp?'<span class="bptag">BP</span>':''}
+      </div>
+      <div class="rmeta2">
+        <span>Unlock <b>Lv ${it.req}</b></span>
+        <span>XP <b>${effXP(it)}</b>${state.ks?` (${it.xp}+${state.ks})`:''}</span>
+        <span>Stops <b>${it.stop>=20000?'—':'Lv '+(it.stop/LVL_XP)}</b></span>
+        ${it.yields>1?`<span>Yields <b>${it.yields}</b></span>`:''}
+      </div>
+      <div class="rrecipes">
+        <div class="rblock"><div class="rlbl">As listed</div>${formatMats(it.mats)}</div>
+        <div class="rblock"><div class="rlbl">Raw recyclables</div>${formatMats(it.raw)}</div>
+      </div>
+      <div class="ract"><button class="btn solid" data-radd="${encodeURIComponent(it.name)}">+ Add to queue</button></div>
+    </div>`).join("");
+}
+
+function renderMeta(){$("#lvlMeta").innerHTML=`<b>${(state.level*LVL_XP).toLocaleString()} XP</b> total<br>100 XP per level`;$("#lvlEcho").textContent=state.level;}
+function renderFoot(){$("#foot").innerHTML=`${ITEMS.length} crafts loaded · <b>XP/mat</b> = XP ÷ ${state.mode==="raw"?"raw material":"listed material"} count · stop-XP removes a craft once total XP ≥ its cap · settings saved to this browser. Sub-parts you craft along the way earn their own XP on top.`;}
+
+function refreshDerived(){renderRankings();renderLadder();renderPlanner();}
+function renderAll(){renderMeta();renderRankings();renderQueue();renderLadder();renderPlanner();renderFoot();buildBP();buildMat();renderRecipeSearch();}
+
+/* events */
+$("#lvl").addEventListener("input",e=>{state.level=Math.max(0,Math.min(200,+e.target.value||0));persist();renderMeta();refreshDerived();});
+$("#modeSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;state.mode=b.dataset.mode;
+  document.querySelectorAll("#modeSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));
+  $("#modeHint").textContent=state.mode==="raw"?"Raw breaks crafted parts down to base recyclables.":"As listed counts each recipe line once.";
+  persist();refreshDerived();renderFoot();});
+$("#scopeSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;state.scope=b.dataset.scope;
+  document.querySelectorAll("#scopeSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));renderRankings();});
+$("#ksSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;state.ks=+b.dataset.ks;
+  document.querySelectorAll("#ksSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));
+  persist();refreshDerived();renderQueue();renderRecipeSearch();});
+$("#planFrom").addEventListener("input",e=>{state.planFrom=Math.max(0,Math.min(200,+e.target.value||0));persist();renderPlanner();});
+$("#planTo").addEventListener("input",e=>{state.planTo=Math.max(0,Math.min(200,+e.target.value||0));persist();renderPlanner();});
+$("#search").addEventListener("input",e=>{state.search=e.target.value;renderRankings();});
+$("#recipeSearch").addEventListener("input",e=>{state.recipeQ=e.target.value;renderRecipeSearch();});
+$("#recipeResults").addEventListener("click",e=>{
+  const b=e.target.closest("[data-radd]");if(!b)return;
+  addToQueue(decodeURIComponent(b.dataset.radd));
+  const t=b.textContent;b.textContent="Added ✓";setTimeout(()=>b.textContent=t,900);});
+
+$("#rankSort").addEventListener("change", event => {
+  const key = event.target.value;
+  state.sort = { key, dir: key === "name" ? 1 : -1 };
+  renderRankings();
+});
+$("#sortDirection").addEventListener("click", () => {
+  state.sort.dir *= -1;
+  renderRankings();
+});
+
+$("#rankCards").addEventListener("click",e=>{
+  const a=e.target.closest("[data-add]");if(a){addToQueue(decodeURIComponent(a.dataset.add));a.textContent="Queued ✓";clearTimeout(a.feedbackTimer);a.feedbackTimer=setTimeout(()=>a.textContent="+ Queue craft",900);return;}
+  const h=e.target.closest("[data-hide]");if(h){state.hidden.add(decodeURIComponent(h.dataset.hide));persist();refreshDerived();}});
+$("#hiddenBar").addEventListener("click",e=>{const u=e.target.closest("[data-unhide]");if(!u)return;
+  const n=decodeURIComponent(u.dataset.unhide);if(n==="__ALL__")state.hidden.clear();else state.hidden.delete(n);
+  persist();refreshDerived();});
+
+$("#bpChecks").addEventListener("change",e=>{const cb=e.target;if(!cb.dataset.bpname)return;
+  const n=decodeURIComponent(cb.dataset.bpname);if(cb.checked)state.ownedBP.add(n);else state.ownedBP.delete(n);
+  cb.closest(".chk").classList.toggle("on",cb.checked);$("#bpCount").textContent=`${state.ownedBP.size}/${ITEMS.filter(i=>i.bp).length}`;
+  persist();refreshDerived();});
+$("#bpSearch").addEventListener("input",e=>{state.bpQ=e.target.value;buildBP();});
+document.querySelector('[data-bp="all"]').addEventListener("click",()=>{ITEMS.filter(i=>i.bp).forEach(i=>state.ownedBP.add(i.name));persist();buildBP();refreshDerived();});
+document.querySelector('[data-bp="none"]').addEventListener("click",()=>{state.ownedBP.clear();persist();buildBP();refreshDerived();});
+
+$("#matChecks").addEventListener("change",e=>{const cb=e.target;if(!cb.dataset.matname)return;
+  if(cb.checked)state.allowMat.add(cb.dataset.matname);else state.allowMat.delete(cb.dataset.matname);
+  cb.closest(".chk").classList.toggle("on",cb.checked);$("#matCount").textContent=`${state.allowMat.size}/${ALL_LEAVES.length}`;
+  persist();refreshDerived();});
+$("#matSearch").addEventListener("input",e=>{state.matQ=e.target.value;buildMat();});
+document.querySelector('[data-mat="all"]').addEventListener("click",()=>{ALL_LEAVES.forEach(m=>state.allowMat.add(m));persist();buildMat();refreshDerived();});
+document.querySelector('[data-mat="base8"]').addEventListener("click",()=>{state.allowMat=new Set(BASE8.filter(m=>ALL_LEAVES.includes(m)));persist();buildMat();refreshDerived();});
+
+$("#qList").addEventListener("click",e=>{
+  const s=e.target.closest("[data-step]");if(s){const[i,d]=s.dataset.step.split(":").map(Number);
+    state.queue[i].qty=Math.max(0,state.queue[i].qty+d);if(state.queue[i].qty===0)state.queue.splice(i,1);persist();renderQueue();return;}
+  const del=e.target.closest("[data-qdel]");if(del){state.queue.splice(+del.dataset.qdel,1);persist();renderQueue();}});
+$("#qList").addEventListener("input",e=>{const q=e.target.closest("[data-qty]");if(!q)return;
+  state.queue[+q.dataset.qty].qty=Math.max(0,+q.value||0);persist();renderCost();});
+
+const qAdd=$("#qAdd"),qSug=$("#qSug");
+qAdd.addEventListener("input",()=>{const v=qAdd.value.toLowerCase().trim();
+  if(!v){qSug.style.display="none";return;}
+  const m=ITEMS.filter(it=>cost(it)>0&&it.name.toLowerCase().includes(v)).slice(0,8);
+  if(!m.length){qSug.style.display="none";return;}
+  qSug.innerHTML=m.map(it=>`<button type="button" data-qadd="${encodeURIComponent(it.name)}"><span>${it.name}${it.bp?' [BP]':''}</span><span class="s">${it.xp} XP · ${Math.round(it.rawTotal)} mats</span></button>`).join("");
+  qSug.style.display="block";});
+qSug.addEventListener("click",e=>{const d=e.target.closest("[data-qadd]");if(!d)return;
+  addToQueue(decodeURIComponent(d.dataset.qadd));qAdd.value="";qSug.style.display="none";qAdd.focus();});
+document.addEventListener("click",e=>{if(!e.target.closest(".qadd"))qSug.style.display="none";});
+$(".qadd").addEventListener("keydown",e=>{if(e.key==="Escape"){qSug.style.display="none";qAdd.focus();}});
+
+document.querySelectorAll("#modeSeg button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===state.mode));
+document.querySelectorAll("#ksSeg button").forEach(b=>b.setAttribute("aria-pressed",+b.dataset.ks===state.ks));
+$("#lvl").value=state.level;$("#planFrom").value=state.planFrom;$("#planTo").value=state.planTo;
+$("#modeHint").textContent=state.mode==="raw"?"Raw breaks crafted parts down to base recyclables.":"As listed counts each recipe line once.";
+renderAll();
+  
+  </script>
+</body>
+</html>
