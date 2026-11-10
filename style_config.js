@@ -1,4 +1,3 @@
-/* Rare Crafting branding and accent colors. */
 const STYLE_CONFIG = {
   gangName: "Rare Crafting",
   gangNameHighlightChars: 4,
@@ -6,7 +5,6 @@ const STYLE_CONFIG = {
   taglineAccent: "XP & material optimizer",
   pageTitleSuffix: "",
 
-  // Optional crew artwork. The built-in R emblem is used if this file is absent.
   emblemSrc: "rare.png",
   emblemAlt: "Rare emblem",
 
